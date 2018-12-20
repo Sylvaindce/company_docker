@@ -1,0 +1,199 @@
+#!/bin/bash
+
+VERT="\\033[1;32m"
+ROUGE="\\033[1;31m"
+NORMAL="\\033[0;39m"
+BLEU="\\033[1;34m"
+ERROR=0
+
+echo -e "$BLEU"
+echo "WELCOME TO THE CORE OS INSTALLER"
+echo -e "$VERT"
+echo " Summary: - You are on Linux live CD debian based
+ - You have sudo privilege
+ - You are connected to internet"
+echo -e "$NORMAL"
+
+mkdir install_tmp
+
+echo -e "$BLEU"
+echo "Installing needed software ..."
+echo -e "$NORMAL"
+sudo apt-get install -y curl
+
+echo -e "$BLEU"
+echo "Donwloding core_os installer script..."
+echo -e "$NORMAL"
+curl https://raw.githubusercontent.com/coreos/init/master/bin/coreos-install > ./install_tmp/coreos_installer.sh
+
+if [ -s ./install_tmp/coreos_installer.sh ]
+then
+    chmod +x ./install_tmp/coreos_installer.sh
+else
+    echo -e "$ROUGE"
+    echo "ERROR while downloading coreos_installer.sh"
+    echo -e "$NORMAL"
+    $ERROR += 1
+fi
+
+touch ./install_tmp/cloud_config.yaml
+echo -e "#cloud-config
+
+hostname: \c" > ./install_tmp/cloud_config.yaml
+
+echo -e "$VERT"
+echo "Please enter the hostname of your choice (Default: CoreOS): (Press Enter to valid)"
+#hostname=$(cat)
+echo -en "$BLEU"
+echo -n "$>"
+echo -en "$NORMAL"
+hostname="CoreOS"
+read line
+if [ -n "$line" ]; then
+    hostname=`echo -n $line | tr -d "\n"`
+fi
+
+echo "$hostname" >> ./install_tmp/cloud_config.yaml
+
+echo "
+users:
+  - name: \"user\"
+    passwd: \"hash_pwd\"
+    groups:
+     - \"sudo\"
+     - \"docker\"
+" >> ./install_tmp/cloud_config.yaml
+
+echo -e "$VERT"
+echo "Downloading ssh-rsa public key...
+Please enter the login of the computer where you download the key: (Press Enter to valid)"
+#name=$(cat)
+echo -en "$BLEU"
+echo -n "$>"
+echo -en "$NORMAL"
+
+read line
+if [ -n "$line" ]; then
+    name=`echo -n $line | tr -d "\n"`
+fi
+
+globalvalue=$name
+globalvalue+="@"
+echo -e "$VERT"
+echo "Please enter the IP of the computer: (Press Enter to valid)"
+#ip=$(cat)
+echo -en "$BLEU"
+echo -n "$>"
+echo -en "$NORMAL"
+
+read line
+if [ -n "$line" ]; then
+    ip=`echo -n $line | tr -d "\n"`
+fi
+
+globalvalue+=$ip
+globalvalue+=":"
+
+echo -e "$VERT"
+echo "Please enter the entire path to the ssh public key (ex: /home/decombs/coreos/id_rsa.pub)
+Note: Important the must be named id_rsa.pub: (Press Enter to valid)"
+#sshpwd=$(cat)
+echo -en "$BLEU"
+echo -n "$>"
+echo -en "$NORMAL"
+
+read line
+if [ -n "$line" ]; then
+    sshpwd=`echo -n $line | tr -d "\n"`
+fi
+
+globalvalue+=$sshpwd
+
+echo "$globalvalue"
+
+echo -e "$VERT"
+echo "Please wait, this operation will take 10 sec max"
+echo -e "$NORMAL"
+
+#timeout 10 echo "Connecting..." | scp $globalvalue ./install_tmp/id_rsa.pub
+scp -o ConnectTimeout=10 $globalvalue ./install_tmp/id_rsa.pub
+
+if [ -s ./install_tmp/id_rsa.pub ]
+then
+    echo -e "ssh-authorized-keys:
+ - \c\"" >> ./install_tmp/cloud_config.yaml
+    cat ./install_tmp/id_rsa.pub >> ./install_tmp/cloud_config.yaml
+else
+    echo -e "$ROUGE"
+    echo "ERROR, cannot retrieve ssh public key."
+    echo -e "$NORMAL"
+    let "ERROR += 1"
+fi
+echo -e "
+coreos:
+  etcd2:
+    discovery: \c" >> ./install_tmp/cloud_config.yaml
+
+echo -e "$BLEU"
+echo "Downloading etcd..."
+echo -e "$NORMAL"
+
+curl https://discovery.etcd.io/new > ./install_tmp/etcd.tok
+
+if [ -s ./install_tmp/etcd.tok ]
+then
+    cat ./install_tmp/etcd.tok >> ./install_tmp/cloud_config.yaml
+else
+    echo -e "$ROUGE"
+    echo "ERROR while downloading etcd"
+    echo -e "$NORMAL"
+    let "ERROR += 1"
+fi
+
+echo -e "$VERT"
+echo "On which device you want to install CoreOS (Default: /dev/sda) (Press Enter to valid)"
+echo -en "$BLEU"
+echo -n "$>"
+echo -en "$NORMAL"
+device="/dev/sda"
+read line
+if [ -n "$line" ]; then
+    device=`echo -n $line | tr -d "\n"`
+fi
+
+echo -e "$BLEU"
+echo "Install in progress..."
+echo -e "$NORMAL"
+
+sudo ./install_tmp/coreos_installer.sh -d $device -C stable -c ./install_tmp/cloud_config.yaml
+
+echo -e "$VERT"
+echo -n "Installation done."
+if [ $ERROR == 0 ]
+then
+    echo "Everything sounds good."
+elif [ $ERROR == 1 ]
+then
+    echo -e "$ROUGE"
+    echo "WARNING, 1 error were encoutered while installing."
+    echo -e "$NORMAL"
+else
+    echo -e "$ROUGE"
+    echo "WARNING, $ERROR errors were encoutered while installing."
+    echo -e "$NORMAL"
+fi
+echo -e "$BLEU"
+echo "Cleaning cache ..."
+echo -e "$VERT"
+echo "You're system will reboot in 10sec"
+echo -e "$NORMAL"
+
+sudo rm -rf install_tmp
+
+sleep 10
+
+sudo reboot
+
+exit 0
+
+#DECOMBE Sylvain
